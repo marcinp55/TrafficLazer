@@ -16,7 +16,6 @@ public class BasicPacketListener implements PacketListener {
     @Override
     public void gotPacket(Packet packet) {
         BasicRepository.getInstance().addToSingleRunCapturedPackets(packet);
-        System.out.println(BasicRepository.getInstance().getSingleRunCapturedPackets());
     }
 
     public PcapHandle getPcapHandle() {

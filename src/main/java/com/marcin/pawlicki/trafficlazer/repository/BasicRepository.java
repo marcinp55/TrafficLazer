@@ -11,6 +11,7 @@ import java.util.List;
 public class BasicRepository {
     private static BasicRepository repositoryInstance;
     private final List<Packet> singleRunCapturedPackets = new ArrayList<>();
+    private final List<Packet> dangerousPackets = new ArrayList<>();
 
     private BasicRepository() {
     }
@@ -27,7 +28,15 @@ public class BasicRepository {
         singleRunCapturedPackets.add(packet);
     }
 
+    public void addToDangerousPackets(Packet packet) {
+        dangerousPackets.add(packet);
+    }
+
     public List<Packet> getSingleRunCapturedPackets() {
         return singleRunCapturedPackets;
+    }
+
+    public List<Packet> getDangerousPackets() {
+        return dangerousPackets;
     }
 }

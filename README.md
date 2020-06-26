@@ -1,0 +1,1 @@
+This is just a simple prototype of network security risks detection app.

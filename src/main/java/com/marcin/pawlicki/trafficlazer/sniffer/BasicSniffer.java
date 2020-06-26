@@ -1,25 +1,27 @@
 package com.marcin.pawlicki.trafficlazer.sniffer;
 
+import com.marcin.pawlicki.trafficlazer.analyzer.MainAnalyzer;
 import com.marcin.pawlicki.trafficlazer.listener.BasicPacketListener;
-import com.marcin.pawlicki.trafficlazer.threads.Task;
+import com.marcin.pawlicki.trafficlazer.reporter.BasicReporter;
+import com.marcin.pawlicki.trafficlazer.repository.BasicRepository;
+import com.marcin.pawlicki.trafficlazer.simulator.AttackSimulator;
+import com.marcin.pawlicki.trafficlazer.thread.CaptureThread;
 import org.pcap4j.core.*;
-import org.pcap4j.packet.*;
-import org.pcap4j.packet.namednumber.*;
 
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class BasicSniffer {
     private final String addressToMonitor = "192.168.0.14"; // Personal address of network interface to monitor
-    private final ExecutorService pool = Executors.newSingleThreadExecutor();
+    private final ExecutorService threadPool = Executors.newSingleThreadExecutor();
+    private final MainAnalyzer securityAnalyzer = new MainAnalyzer();
+    private final BasicReporter reporter = new BasicReporter();
+    private final int maximumTransmissionUnit = 1403;
     private int snapshotLength = 65536; // Bytes - 0 means infinite buffer size
     private int readTimeout = 10;
     private PcapNetworkInterface networkInterface = null;
-    private PcapHandle pcapHandle = null;
+    private PcapHandle pcapCaptureHandle = null;
     private PcapHandle pcapSendHandle = null;
 
     public void startMonitoring() {
@@ -57,7 +59,7 @@ public class BasicSniffer {
         }
 
         try {
-            pcapHandle = networkInterface.openLive(snapshotLength, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, readTimeout);
+            pcapCaptureHandle = networkInterface.openLive(snapshotLength, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, readTimeout);
             pcapSendHandle = networkInterface.openLive(snapshotLength, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, readTimeout);
         } catch (PcapNativeException e) {
             System.out.println("PcapNativeExceptionOccurred when opening a handle.");
@@ -66,52 +68,41 @@ public class BasicSniffer {
     }
 
     public void capturePackets() {
-        PacketListener packetListener = new BasicPacketListener(pcapHandle);
+        PacketListener packetListener = new BasicPacketListener(pcapCaptureHandle);
 
-        Task task = new Task(pcapHandle, packetListener);
-        pool.execute(task);
+        CaptureThread capturePacketsThread = new CaptureThread(pcapCaptureHandle, packetListener);
+        threadPool.execute(capturePacketsThread);
 
-        IpV4Packet.Builder ipV4PacketBuilder = new IpV4Packet.Builder();
-        Packet ip4TestPacket = null;
+        AttackSimulator attackSimulator = new AttackSimulator(pcapSendHandle, maximumTransmissionUnit, addressToMonitor);
 
-        byte[] echoData = new byte[4000 - 28];
-        for (int i = 0; i < echoData.length; i++) {
-            echoData[i] = (byte) i;
-        }
-
-        IcmpV4EchoPacket.Builder echoBuilder = new IcmpV4EchoPacket.Builder();
-        echoBuilder
-                .identifier((short) 1)
-                .payloadBuilder(new UnknownPacket.Builder().rawData(echoData));
-
-        IcmpV4CommonPacket.Builder icmpV4CommonBuilder = new IcmpV4CommonPacket.Builder();
-        icmpV4CommonBuilder
-                .type(IcmpV4Type.ECHO)
-                .code(IcmpV4Code.NO_CODE)
-                .payloadBuilder(echoBuilder)
-                .correctChecksumAtBuild(true);
+        attackSimulator.simulateSynScan();
+        attackSimulator.simulateARPSpoofing();
 
         try {
-            ip4TestPacket = ipV4PacketBuilder
-                    .version(IpVersion.IPV4)
-                    .tos(IpV4Rfc791Tos.newInstance((byte) 0))
-                    .protocol(IpNumber.ICMPV4)
-                    .srcAddr((Inet4Address) Inet4Address.getLocalHost())
-                    .dstAddr((Inet4Address) Inet4Address.getByName("123.222.111.212"))
-                    .build();
-        } catch (UnknownHostException e) {
+            Thread.sleep(10 * 1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             e.printStackTrace();
         }
 
-        try {
-            for (int i = 0; i <= 1000; i++) {
-                if (ip4TestPacket != null) {
-                    System.out.println("SENDING PACKET");
-                    pcapSendHandle.sendPacket(ip4TestPacket);
-                }
-            }
-        } catch (PcapNativeException | NotOpenException e) {
-            e.printStackTrace();
+        securityAnalyzer.findSecurityRisks(BasicRepository.getInstance().getSingleRunCapturedPackets());
+
+        reporter.reportFoundIssues(securityAnalyzer);
+
+        closeEverything();
+    }
+
+    private void closeEverything() {
+        if (pcapCaptureHandle != null && pcapCaptureHandle.isOpen()) {
+            pcapCaptureHandle.close();
+        }
+
+        if (pcapSendHandle != null && pcapSendHandle.isOpen()) {
+            pcapSendHandle.close();
+        }
+
+        if (!threadPool.isShutdown()) {
+            threadPool.shutdown();
         }
     }
 
@@ -135,12 +126,12 @@ public class BasicSniffer {
         return addressToMonitor;
     }
 
-    public PcapHandle getPcapHandle() {
-        return pcapHandle;
+    public PcapHandle getPcapCaptureHandle() {
+        return pcapCaptureHandle;
     }
 
-    public void setPcapHandle(PcapHandle pcapHandle) {
-        this.pcapHandle = pcapHandle;
+    public void setPcapCaptureHandle(PcapHandle pcapCaptureHandle) {
+        this.pcapCaptureHandle = pcapCaptureHandle;
     }
 
     public PcapNetworkInterface getNetworkInterface() {
@@ -149,5 +140,9 @@ public class BasicSniffer {
 
     public void setNetworkInterface(PcapNetworkInterface networkInterface) {
         this.networkInterface = networkInterface;
+    }
+
+    public int getMaximumTransmissionUnit() {
+        return maximumTransmissionUnit;
     }
 }

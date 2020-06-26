@@ -1,15 +1,15 @@
-package com.marcin.pawlicki.trafficlazer.threads;
+package com.marcin.pawlicki.trafficlazer.thread;
 
 import org.pcap4j.core.NotOpenException;
 import org.pcap4j.core.PacketListener;
 import org.pcap4j.core.PcapHandle;
 import org.pcap4j.core.PcapNativeException;
 
-public class Task implements Runnable {
-    private PcapHandle handle;
-    private PacketListener listener;
+public class CaptureThread implements Runnable {
+    private final PcapHandle handle;
+    private final PacketListener listener;
 
-    public Task(PcapHandle handle, PacketListener listener) {
+    public CaptureThread(PcapHandle handle, PacketListener listener) {
         this.handle = handle;
         this.listener = listener;
     }
